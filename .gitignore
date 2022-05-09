@@ -1,0 +1,11 @@
+*.pyc
+dist/
+*.egg-info/
+env
+.idea/
+logging
+market_maker.market_maker
+time
+*.csv
+*.log
+run-lock.pid
