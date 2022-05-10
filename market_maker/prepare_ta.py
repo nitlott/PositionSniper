@@ -4,89 +4,94 @@ from market_maker import indicators as indi
 
 def prepare(timeframe1m,timeframe5m,timeframe1h):
     ohlc = {
-    'Open': 'first',
-    'High': 'max',
-    'Low': 'min',
-    'Close': 'last',
-    'Volume': 'sum'
-}   
+        'Open': 'first',
+        'High': 'max',
+        'Low': 'min',
+        'Close': 'last',
+        'Volume': 'sum'
+    }   
 
+    sort_values = {
+        "by": "timestamp",
+        "ascending": True
+    }
+    drop = {
+        "labels": ['symbol', 'trades' ,'vwap', 'lastSize', 'turnover', 'homeNotional', 'foreignNotional'],
+        "axis": 1
+    }
+    rename = {
+        "columns": {
+            'open': 'Open',
+            'close': 'Close',
+            'high': 'High',
+            'low': 'Low',
+            'volume': 'Volume'
+        },
+        "inplace": True
+    }
 
-    df1min_orig = pd.DataFrame(timeframe1m[:], columns=timeframe1m[0])
-    df1min_orig=df1min_orig.sort_values(['timestamp'], ascending=[True])
-    df1min_orig=df1min_orig.drop(['symbol', 'trades' ,'vwap', 'lastSize', 'turnover', 'homeNotional', 'foreignNotional'],axis=1)
-    df1min_orig.rename(columns={'open': 'Open', 'close': 'Close'}, inplace=True)
-    df1min_orig.rename(columns={'high': 'High', 'low': 'Low'}, inplace=True)
-    df1min_orig.rename(columns={'volume': 'Volume'}, inplace=True)
+    df1min_orig = pd.DataFrame(timeframe1m[:], columns=timeframe1m[0]).sort_values(**sort_values).drop(**drop).rename(**rename)
     df1min_orig.index = pd.DatetimeIndex(df1min_orig['timestamp']) 
 
-    df5min_orig = pd.DataFrame(timeframe5m[:], columns=timeframe5m[0])
-    df5min_orig=df5min_orig.sort_values(['timestamp'], ascending=[True])
-    df5min_orig=df5min_orig.drop(['symbol', 'trades' ,'vwap', 'lastSize', 'turnover', 'homeNotional', 'foreignNotional'],axis=1)
-    df5min_orig.rename(columns={'open': 'Open', 'close': 'Close'}, inplace=True)
-    df5min_orig.rename(columns={'high': 'High', 'low': 'Low'}, inplace=True)
-    df5min_orig.rename(columns={'volume': 'Volume'}, inplace=True)
+    df5min_orig = pd.DataFrame(timeframe5m[:], columns=timeframe5m[0]).sort_values(**sort_values).drop(**drop).rename(**rename)
     df5min_orig.index = pd.DatetimeIndex(df5min_orig['timestamp']) 
 
-    df60min_orig = pd.DataFrame(timeframe1h[:], columns=timeframe1h[0])
-    df60min_orig=df60min_orig.sort_values(['timestamp'], ascending=[True])
-    df60min_orig=df60min_orig.drop(['symbol', 'trades' ,'vwap', 'lastSize', 'turnover', 'homeNotional', 'foreignNotional'],axis=1)
-    df60min_orig.rename(columns={'open': 'Open', 'close': 'Close'}, inplace=True)
-    df60min_orig.rename(columns={'high': 'High', 'low': 'Low'}, inplace=True)
-    df60min_orig.rename(columns={'volume': 'Volume'}, inplace=True)
+    df60min_orig = pd.DataFrame(timeframe1h[:], columns=timeframe1h[0]).sort_values(**sort_values).drop(**drop).rename(**rename)
     df60min_orig.index = pd.DatetimeIndex(df60min_orig['timestamp'])     
     #df = df.resample('15min', offset="-5T").apply(ohlc)#EXPERIMENTAL Gives signal way faster
 
     df2m = df1min_orig.resample('2min', closed='right').apply(ohlc)##Lags few minutes
-
     df3m = df1min_orig.resample('3min', closed='right').apply(ohlc)##Lags few minutes
-
     df10m = df5min_orig.resample('10min', closed='right').apply(ohlc)##Lags few minutes
-
     df15m = df5min_orig.resample('15min', closed='right').apply(ohlc)##Lags few minutes
-
     df30m = df5min_orig.resample('30min', closed='right').apply(ohlc)##Lags few minutes
-
     df45m = df5min_orig.resample('45min', closed='right').apply(ohlc)##Lags few minutes
  
 
+    timeframe1m = df1min_orig.join([
+        tanalysis.Fetch(df1min_orig),
+        indi.supertrend(df1min_orig, period=12, ATR_multiplier=3)
+    ])
 
-    timeframe1m=tanalysis.Fetch(df1min_orig)
-    timeframe2m=tanalysis.Fetch(df2m)
-    timeframe3m=tanalysis.Fetch(df3m)
-    timeframe5m=tanalysis.Fetch(df5min_orig)
-    timeframe10m=tanalysis.Fetch(df10m)
-    timeframe15m=tanalysis.Fetch(df15m)
-    timeframe30m=tanalysis.Fetch(df30m)
-    timeframe45m=tanalysis.Fetch(df45m)
-    timeframe1h=tanalysis.Fetch(df60min_orig)
+    timeframe2m = df2m.join([
+        tanalysis.Fetch(df2m),
+        indi.supertrend(df2m, period=12, ATR_multiplier=3)
+    ])
 
-    supertrend = indi.supertrend(timeframe1m, period=12, ATR_multiplier=3)
-    timeframe1m=timeframe1m.join(supertrend)
+    timeframe3m = df3m.join([
+        tanalysis.Fetch(df3m),
+        indi.supertrend(df3m, period=12, ATR_multiplier=3)
+    ])
 
-    supertrend = indi.supertrend(timeframe2m, period=12, ATR_multiplier=3)
-    timeframe2m=timeframe2m.join(supertrend)
+    timeframe5m = df5min_orig.join([
+        tanalysis.Fetch(df5min_orig),
+        indi.supertrend(df5min_orig, period=12, ATR_multiplier=3)
+    ])
 
-    supertrend = indi.supertrend(timeframe3m, period=12, ATR_multiplier=3)
-    timeframe3m=timeframe3m.join(supertrend)
+    timeframe10m = df10m.join([
+        tanalysis.Fetch(df10m),
+        indi.supertrend(df10m, period=12, ATR_multiplier=3)
+    ])
 
-    supertrend = indi.supertrend(timeframe5m, period=12, ATR_multiplier=3)
-    timeframe5m=timeframe5m.join(supertrend)
+    timeframe15m = df15m.join([
+        tanalysis.Fetch(df15m),
+        indi.supertrend(df15m, period=12, ATR_multiplier=3)
+    ])
 
-    supertrend = indi.supertrend(timeframe10m, period=12, ATR_multiplier=3)
-    timeframe10m=timeframe10m.join(supertrend)
+    timeframe30m = df30m.join([
+        tanalysis.Fetch(df30m),
+        indi.supertrend(df30m, period=12, ATR_multiplier=3)
+    ])
 
-    supertrend = indi.supertrend(timeframe15m, period=12, ATR_multiplier=3)
-    timeframe15m=timeframe15m.join(supertrend)
+    timeframe45m = df45m.join([
+        tanalysis.Fetch(df45m),
+        indi.supertrend(df45m, period=12, ATR_multiplier=3)
+    ])
 
-    supertrend = indi.supertrend(timeframe30m, period=12, ATR_multiplier=3)
-    timeframe30m=timeframe30m.join(supertrend)
-
-    supertrend = indi.supertrend(timeframe45m, period=12, ATR_multiplier=3)
-    timeframe45m=timeframe45m.join(supertrend)
-
-    supertrend = indi.supertrend(timeframe1h, period=12, ATR_multiplier=3)
-    timeframe1h=timeframe1h.join(supertrend)            
+    timeframe1h = df60min_orig.join([
+        tanalysis.Fetch(df60min_orig),
+        indi.supertrend(df60min_orig, period=12, ATR_multiplier=3)
+    ])  
 
     make_csv=True
     if make_csv:
