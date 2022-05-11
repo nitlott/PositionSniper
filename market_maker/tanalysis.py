@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import mplfinance as mpf
 from finta import TA
+
 def Fetch(df):
     ##Kijun-sen##
     def KIJUN(data):
@@ -86,6 +87,41 @@ def Fetch(df):
         df["MACD"], df["MACD_SIGNAL"], df["MACD_HIST"] = macd, signal, histogram
         return df        
 
+    ## Standard deviation ##
+    def STDDEV(data):
+        df = data
+        df['STDDEV'] = ta.stdev(data['Close'], 12, False)
+        return df
+
+    ## SFX Trend Or Range Indicator ##
+    def sfxtrend(data):
+        df=data
+
+        SFXSTATE = '' if not df['SFXSTATE'].shift() else df['SFXSTATE'].shift() # use sfxstate from previous row or ''
+        STDDEV = df['STDDEV']
+        SMA = ta.sma(df['Close'], length=11)
+        CROSS = ta.cross(STDDEV, SMA)
+        IDU = CROSS and STDDEV > SMA and STDDEV < ATR
+        IDU2 = CROSS and STDDEV > SMA and STDDEV > ATR
+        IDD = CROSS and STDDEV < SMA and STDDEV > ATR
+        IDD2 = CROSS and STDDEV < SMA and STDDEV < ATR
+
+        if IDU and (SFXSTATE == 'exhaust' or SFXSTATE == '' or SFXSTATE == 'sideways') 
+            SFXSTATE = 'trend'
+
+        if IDD and (SFXSTATE =='trend')
+            SFXSTATE = 'exhaust'
+
+        if IDD2 and (SFXSTATE == 'exhaust' or SFXSTATE == '')
+            SFXSTATE = 'sideways'
+
+
+        df['IDD'] = IDD
+        df['IDD2'] = IDD2
+        df['IDU'] = IDU
+        df['SFXSTATE'] = SFXSTATE
+
+        return df
   
     #df=SMA(df)
     #df=BB(df)
@@ -95,6 +131,8 @@ def Fetch(df):
     df=MFI(df)
     df=KIJUN(df)
     df=ATR(df)
+    df=STDDEV(df)
+    df=sfxtrend(df)
     pd.set_option('display.max_rows', None)
 
 
