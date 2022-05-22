@@ -119,13 +119,13 @@ def Fetch(df):
         IDD = CROSS and STDDEV < SMA and STDDEV > ATR
         IDD2 = CROSS and STDDEV < SMA and STDDEV < ATR
 
-        if IDU and (SFXSTATE == 'exhaust' or SFXSTATE == '' or SFXSTATE == 'sideways') 
+        if IDU and (SFXSTATE == 'exhaust' or SFXSTATE == '' or SFXSTATE == 'sideways'):
             SFXSTATE = 'trend'
 
-        if IDD and (SFXSTATE =='trend')
+        if IDD and (SFXSTATE =='trend'):
             SFXSTATE = 'exhaust'
 
-        if IDD2 and (SFXSTATE == 'exhaust' or SFXSTATE == '')
+        if IDD2 and (SFXSTATE == 'exhaust' or SFXSTATE == ''):
             SFXSTATE = 'sideways'
 
 
