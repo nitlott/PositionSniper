@@ -9,3 +9,4 @@ time
 *.csv
 *.log
 run-lock.pid
+settings.py
