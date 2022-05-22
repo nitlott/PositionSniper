@@ -22,7 +22,6 @@ def check_trigger(self,data,tf=None,bigger_picture=None):
     if tf != None:
         timeframe=tf
     ticker = self.get_ticker()
-    macd, signal, histogram = data["MACD"], data["MACD_SIGNAL"], data["MACD_HIST"]
     existing_orders = self.exchange.get_orders()
     existing_stops = self.exchange.get_stops()
     margin = self.exchange.get_margin()
@@ -77,30 +76,22 @@ def check_trigger(self,data,tf=None,bigger_picture=None):
         self.exchange.cancel_all_orders(stops=False)
     """Variables END"""
 
-    
-    """Trigger part for triggering events"""
-    macd_trigger="nothing"
-    if macd[-2] < signal[-2] and macd[-1] > signal[-1] and signal[-2] < 0:
-        ###Long when macd crosses signal upwards and macd is below 0 value
-        macd_trigger="long"
-        #if not self.trigger:
-        self.trigger=True
-        if not self.notification and data.Close[-1] > ema200 and position == 0:
-            self.notification=True
-            logger.info(f"Trigged long from timeframe:{tf}")
 
-    elif macd[-2] > signal[-2] and macd[-1] < signal[-1] and signal[-2] > 0:
-        ###Short when macd crosses signal downwards and macd is above 0 value
-        macd_trigger="short"
-        #if not self.trigger:
+    """Trigger part for triggering events"""
+    self.trigger=False
+    trigger_type="nothing"
+    if data.IDD and data.SFXSTATE == 'sideways':
+        trigger_type="short" # nuke
+    else if data.IDD:
+        trigger_type="long" # dollar
+    else if data.IDU and data.SFXSTATE == 'trend' and data.SMMA2_TEETH > data.SMMA2_TEETH[-1] and data.Close > data.Open:
+        trigger_type="long" # bomb
+    else if data.IDU and data.SFXSTATE == 'trend' and data.SMMA2_TEETH < data.SMMA2_TEETH[-1] and data.Close < data.Open:
+        trigger_type="short" # hammer
+
+    if trigger_type != 'nothing' and self.previous_trigger != trigger_type
         self.trigger=True
-        if not self.notification and data.Close[-1] < ema200 and position == 0:
-            self.notification=True
-            logger.info(f"Trigged short from timeframe:{tf}")        
-    else:
-        self.trigger=False
-        self.trigged=False
-        self.notification=False
+        self.previous_trigger = trigger_type
     """Trigger part END"""
 
 
@@ -235,7 +226,7 @@ def check_trigger(self,data,tf=None,bigger_picture=None):
     disable_below=True
     """Reverse signal take profit/amend stop"""
     if self.in_trade and not self.trigged and not disable_below:#and self.trigger 
-        if data.trend[-1] == -1 and position > 0 and macd_trigger=="short":#
+        if data.trend[-1] == -1 and position > 0 and trigger_type=="short":#
             self.trigged=True
             to_amend=[]
             existing_stops = self.exchange.get_stops()            
@@ -258,7 +249,7 @@ def check_trigger(self,data,tf=None,bigger_picture=None):
                             current_qty = self.initialpos     
                             if desierd_stopPx != current_stopPx:
                                 to_amend.append({'orderID': stop['orderID'], 'orderQty': stop['cumQty'] + desired_qty, 'side': stop['side']})                                  
-        elif data.trend[-1] == 1 and position < 0 and macd_trigger=="long":#
+        elif data.trend[-1] == 1 and position < 0 and trigger_type=="long":#
             self.trigged=True
             to_amend=[]
             existing_stops = self.exchange.get_stops()              
@@ -317,7 +308,7 @@ def check_trigger(self,data,tf=None,bigger_picture=None):
 
     #print("EMA200:", ema200, " Close:", data.Close[-1])
     """FINALLY OPEN POSITION IF NOTHING ELSE HAPPEND AND GOT A TRIGGER"""
-    if  (data.Close[-1] > bigema200) and (data.Close[-1] > ema200) and macd_trigger == "long" and not self.in_trade: #data['kijun'][-1] > data['EMA50'][-1] and
+    if  (data.Close[-1] > bigema200) and (data.Close[-1] > ema200) and trigger_type == "long" and not self.in_trade: #data['kijun'][-1] > data['EMA50'][-1] and
 
         self.trigged=True  #To make sure we dont double trigger stuff
         self.in_trade=True  #To make sure we dont double trigger stuff
@@ -370,7 +361,7 @@ def check_trigger(self,data,tf=None,bigger_picture=None):
                 pass
 
 
-    elif (data.Close[-1] < ema200) and (data.Close[-1] < ema200) and macd_trigger == "short" and not self.in_trade: #data['kijun'][-1] < data['EMA50'][-1] and 
+    elif (data.Close[-1] < ema200) and (data.Close[-1] < ema200) and trigger_type == "short" and not self.in_trade: #data['kijun'][-1] < data['EMA50'][-1] and 
         self.trigged=True  #To make sure we dont double trigger stuff
         self.in_trade=True  #To make sure we dont double trigger stuff
         """DOWN TREND MACD"""                
