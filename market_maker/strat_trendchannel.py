@@ -308,7 +308,7 @@ def check_trigger(self,data,tf=None,bigger_picture=None):
 
     #print("EMA200:", ema200, " Close:", data.Close[-1])
     """FINALLY OPEN POSITION IF NOTHING ELSE HAPPEND AND GOT A TRIGGER"""
-    if  (data.Close[-1] > bigema200) and (data.Close[-1] > ema200) and trigger_type == "long" and not self.in_trade: #data['kijun'][-1] > data['EMA50'][-1] and
+    if  (data.Close[-1] > bigema200) and (data.Close[-1] > ema200) and self.trigger == True and trigger_type == "long" and not self.in_trade: #data['kijun'][-1] > data['EMA50'][-1] and
 
         self.trigged=True  #To make sure we dont double trigger stuff
         self.in_trade=True  #To make sure we dont double trigger stuff
@@ -361,7 +361,7 @@ def check_trigger(self,data,tf=None,bigger_picture=None):
                 pass
 
 
-    elif (data.Close[-1] < ema200) and (data.Close[-1] < ema200) and trigger_type == "short" and not self.in_trade: #data['kijun'][-1] < data['EMA50'][-1] and 
+    elif (data.Close[-1] < ema200) and (data.Close[-1] < ema200) and self.trigger == True and trigger_type == "short" and not self.in_trade: #data['kijun'][-1] < data['EMA50'][-1] and 
         self.trigged=True  #To make sure we dont double trigger stuff
         self.in_trade=True  #To make sure we dont double trigger stuff
         """DOWN TREND MACD"""                
