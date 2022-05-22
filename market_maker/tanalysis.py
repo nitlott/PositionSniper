@@ -7,6 +7,10 @@ import matplotlib.dates as mdates
 import mplfinance as mpf
 from finta import TA
 
+# shortcut for (high + low)/2
+def HL2():
+    return (df["High"]+df["Low"])/2
+
 def Fetch(df):
     ##Kijun-sen##
     def KIJUN(data):
@@ -40,6 +44,15 @@ def Fetch(df):
     def MFI(data):
         df['MFI'] = ta.mfi(df["High"], df["Low"], df["Close"], df["Volume"], length=11)
         return df        
+
+    def SMMA2(data):
+        LENGTH_TEETH = 8
+        LENGTH_JAW = 13
+        LENGTH_LIPS = 5
+        df['SMMA2_TEETH'] = ta.sma(HL2(), length=11) if not df['SMMA2_TEETH'].shift() else (df['SMMA2_TEETH'].shift() * (LENGTH_TEETH - 1) + HL2()) / LENGTH_TEETH
+        df['SMMA2_JAW'] = ta.sma(HL2(), length=11) if not df['SMMA2_JAW'].shift() else (df['SMMA2_JAW'].shift() * (LENGTH_JAW - 1) + HL2()) / LENGTH_JAW
+        df['SMMA2_LIPS'] = ta.sma(HL2(), length=11) if not df['SMMA2_LIPS'].shift() else (df['SMMA2_LIPS'].shift() * (LENGTH_LIPS - 1) + HL2()) / LENGTH_LIPS
+        return df
 
     ##ExpMoving average##
     def EMA(data):
@@ -132,6 +145,7 @@ def Fetch(df):
     df=KIJUN(df)
     df=ATR(df)
     df=STDDEV(df)
+    df=SMMA2(df)
     df=sfxtrend(df)
     pd.set_option('display.max_rows', None)
 
