@@ -113,33 +113,16 @@ def Fetch(df):
     ## SFX Trend Or Range Indicator ##
     def sfxtrend(data):
         df=data
-
-        SFXSTATE = '' if not df['SFXSTATE'].shift() else df['SFXSTATE'].shift() # use sfxstate from previous row or ''
-        STDDEV = df['STDDEV']
-        SMA = ta.sma(df['Close'], length=11)
-        CROSS = ta.cross(STDDEV, SMA)
-        IDU = CROSS and STDDEV > SMA and STDDEV < ATR
-        IDU2 = CROSS and STDDEV > SMA and STDDEV > ATR
-        IDD = CROSS and STDDEV < SMA and STDDEV > ATR
-        IDD2 = CROSS and STDDEV < SMA and STDDEV < ATR
-
-        if IDU and (SFXSTATE == 'exhaust' or SFXSTATE == '' or SFXSTATE == 'sideways'):
-            SFXSTATE = 'trend'
-
-        if IDD and (SFXSTATE =='trend'):
-            SFXSTATE = 'exhaust'
-
-        if IDD2 and (SFXSTATE == 'exhaust' or SFXSTATE == ''):
-            SFXSTATE = 'sideways'
-
-
-        df['IDD'] = IDD
-        df['IDD2'] = IDD2
-        df['IDU'] = IDU
-        df['SFXSTATE'] = SFXSTATE
-
+        df['SFXSTATE'] = ''
+        df['SMA'] = ta.sma(df['Close'], length=11)
+        df['IDU'] = ta.cross(df['STDDEV'], df['SMA']) & (df['STDDEV'] > df['SMA']) & (df['STDDEV'] < df['ATR'])
+        df['IDD'] = ta.cross(df['SMA'], df['STDDEV']) & (df['STDDEV'] < df['SMA']) & (df['STDDEV'] > df['ATR'])
+        df['IDD2'] = ta.cross(df['SMA'], df['STDDEV']) & (df['STDDEV'] < df['SMA']) & (df['STDDEV'] < df['ATR'])
+        df.loc[df['IDU'] & df['SFXSTATE'].shift().str.contains("|exhaust|sideways"), 'SFXSTATE'] = 'trend'
+        df.loc[df['IDD'] & df['SFXSTATE'].shift().str.contains("trend"), 'SFXSTATE'] = 'exhaust'
+        df.loc[df['IDD2'] & df['SFXSTATE'].shift().str.contains("|exhaust"), 'SFXSTATE'] = 'sideways'
         return df
-  
+
     #df=SMA(df)
     #df=BB(df)
     df=EMA(df)
