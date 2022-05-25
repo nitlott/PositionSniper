@@ -6,6 +6,11 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import mplfinance as mpf
 from finta import TA
+
+# shortcut for (high + low)/2
+def HL2(df):
+    return (df["High"]+df["Low"])/2
+
 def Fetch(df):
     ##Kijun-sen##
     def KIJUN(data):
@@ -39,6 +44,19 @@ def Fetch(df):
     def MFI(data):
         df['MFI'] = ta.mfi(df["High"], df["Low"], df["Close"], df["Volume"], length=11)
         return df        
+
+    def SMMA2(data):
+        df=data
+        LENGTH_JAW = 13
+        LENGTH_TEETH = 8
+        LENGTH_LIPS = 5
+        df['SMMA2_JAW'] = ta.sma(HL2(df), length=LENGTH_JAW)
+        df['SMMA2_JAW'] = (df['SMMA2_JAW'].shift() * (LENGTH_JAW - 1) + HL2(df))
+        df['SMMA2_TEETH'] = ta.sma(HL2(df), length=LENGTH_TEETH)
+        df['SMMA2_TEETH'] = (df['SMMA2_TEETH'].shift() * (LENGTH_TEETH - 1) + HL2(df))
+        df['SMMA2_LIPS'] = ta.sma(HL2(df), length=LENGTH_LIPS)
+        df['SMMA2_LIPS'] = (df['SMMA2_LIPS'].shift() * (LENGTH_LIPS - 1) + HL2(df))
+        return df
 
     ##ExpMoving average##
     def EMA(data):
@@ -86,7 +104,25 @@ def Fetch(df):
         df["MACD"], df["MACD_SIGNAL"], df["MACD_HIST"] = macd, signal, histogram
         return df        
 
-  
+    ## Standard deviation ##
+    def STDDEV(data):
+        df = data
+        df['STDDEV'] = ta.stdev(data['Close'], 12, False)
+        return df
+
+    ## SFX Trend Or Range Indicator ##
+    def sfxtrend(data):
+        df=data
+        df['SFXSTATE'] = ''
+        df['SMA'] = ta.sma(df['Close'], length=11)
+        df['IDU'] = ta.cross(df['STDDEV'], df['SMA']) & (df['STDDEV'] > df['SMA']) & (df['STDDEV'] < df['ATR'])
+        df['IDD'] = ta.cross(df['SMA'], df['STDDEV']) & (df['STDDEV'] < df['SMA']) & (df['STDDEV'] > df['ATR'])
+        df['IDD2'] = ta.cross(df['SMA'], df['STDDEV']) & (df['STDDEV'] < df['SMA']) & (df['STDDEV'] < df['ATR'])
+        df.loc[df['IDU'] & df['SFXSTATE'].shift().str.contains("|exhaust|sideways"), 'SFXSTATE'] = 'trend'
+        df.loc[df['IDD'] & df['SFXSTATE'].shift().str.contains("trend"), 'SFXSTATE'] = 'exhaust'
+        df.loc[df['IDD2'] & df['SFXSTATE'].shift().str.contains("|exhaust"), 'SFXSTATE'] = 'sideways'
+        return df
+
     #df=SMA(df)
     #df=BB(df)
     df=EMA(df)
@@ -95,6 +131,9 @@ def Fetch(df):
     df=MFI(df)
     df=KIJUN(df)
     df=ATR(df)
+    df=STDDEV(df)
+    df=SMMA2(df)
+    df=sfxtrend(df)
     pd.set_option('display.max_rows', None)
 
 
