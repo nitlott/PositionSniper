@@ -8,7 +8,7 @@ import mplfinance as mpf
 from finta import TA
 
 # shortcut for (high + low)/2
-def HL2():
+def HL2(df):
     return (df["High"]+df["Low"])/2
 
 def Fetch(df):
@@ -46,12 +46,16 @@ def Fetch(df):
         return df        
 
     def SMMA2(data):
-        LENGTH_TEETH = 8
+        df=data
         LENGTH_JAW = 13
+        LENGTH_TEETH = 8
         LENGTH_LIPS = 5
-        df['SMMA2_TEETH'] = ta.sma(HL2(), length=11) if not df['SMMA2_TEETH'].shift() else (df['SMMA2_TEETH'].shift() * (LENGTH_TEETH - 1) + HL2()) / LENGTH_TEETH
-        df['SMMA2_JAW'] = ta.sma(HL2(), length=11) if not df['SMMA2_JAW'].shift() else (df['SMMA2_JAW'].shift() * (LENGTH_JAW - 1) + HL2()) / LENGTH_JAW
-        df['SMMA2_LIPS'] = ta.sma(HL2(), length=11) if not df['SMMA2_LIPS'].shift() else (df['SMMA2_LIPS'].shift() * (LENGTH_LIPS - 1) + HL2()) / LENGTH_LIPS
+        df['SMMA2_JAW'] = ta.sma(HL2(df), length=LENGTH_JAW)
+        df['SMMA2_JAW'] = (df['SMMA2_JAW'].shift() * (LENGTH_JAW - 1) + HL2(df))
+        df['SMMA2_TEETH'] = ta.sma(HL2(df), length=LENGTH_TEETH)
+        df['SMMA2_TEETH'] = (df['SMMA2_TEETH'].shift() * (LENGTH_TEETH - 1) + HL2(df))
+        df['SMMA2_LIPS'] = ta.sma(HL2(df), length=LENGTH_LIPS)
+        df['SMMA2_LIPS'] = (df['SMMA2_LIPS'].shift() * (LENGTH_LIPS - 1) + HL2(df))
         return df
 
     ##ExpMoving average##
