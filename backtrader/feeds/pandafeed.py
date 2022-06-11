@@ -21,6 +21,8 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+from pandas import Timestamp
+
 from backtrader.utils.py3 import filter, string_types, integer_types
 
 from backtrader import date2num
@@ -141,7 +143,7 @@ class PandasData(feed.DataBase):
         #  -1 : autodetect position or case-wise equal name
         #  >= 0 : numeric index to the colum in the pandas dataframe
         #  string : column name (as index) in the pandas dataframe
-        ('datetime', None),
+        ('datetime', -1),
 
         # Possible values below:
         #  None : column not present
@@ -263,6 +265,8 @@ class PandasData(feed.DataBase):
         else:
             # it's in a different column ... use standard column index
             tstamp = self.p.dataname.iloc[self._idx, coldtime]
+
+        tstamp = Timestamp(tstamp, unit='ms')
 
         # convert to float via datetime and store it
         dt = tstamp.to_pydatetime()

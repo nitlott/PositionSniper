@@ -1,7 +1,8 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-import datetime  # For datetime objects
+#import datetime  # For datetime objects
+from datetime import datetime
 import os.path  # To manage paths
 import sys  # To find out the script name (in argv[0])
 
@@ -24,14 +25,6 @@ class TestStrategy(bt.Strategy):
     def __init__(self):
         # Keep a reference to the lines in the data[0] dataseries
         self.dataclose = self.datas[0].close
-        self.data = tanalysis.Fetch(
-          pd.DataFrame(self.datas[0], columns=[
-            'datetime',
-            'open',
-            'high',
-            # todo: https://www.backtrader.com/docu/datafeed-develop-csv/
-          ])
-        )
 
         # To keep track of pending orders and buy price/commission
         self.order = None
@@ -127,23 +120,22 @@ if __name__ == '__main__':
     datapath = os.path.join(modpath, './datas/big_dump_30_min.csv')
 
     # Create a Data Feed
-    data = bt.feeds.GenericCSVData(
-    dataname=datapath,
-    fromdate=datetime.datetime(2017, 12, 31),
-    todate=datetime.datetime(2018, 1, 31),
+    dataframe = pd.read_csv(datapath,
+                                #skiprows=0,
+                                header=0,
+                                #names=['open','high','low','close','volume','date'],
+                                #usecols=['Open','High','Low','Close','Volume','Close_time'],
+                                parse_dates=True,
+                                index_col=0)
 
-    nullvalue=float('NaN'),
+    print('--------------------------------------------------')
+    print(dataframe)
+    print('--------------------------------------------------')
 
-    dtformat=1,
+    dataframe = tanalysis.Fetch(dataframe)
 
-    datetime=6,
-    high=2,
-    low=3,
-    open=1,
-    close=4,
-    volume=5,
-    openinterest=-1
-    )
+    # Pass it to the backtrader datafeed and add it to the cerebro
+    data = bt.feeds.PandasData(dataname=dataframe)
 
     # Add the Data Feed to Cerebro
     cerebro.adddata(data)

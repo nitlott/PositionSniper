@@ -93,8 +93,10 @@ class GenericCSVData(feed.CSVDataBase):
         elif isinstance(self.p.dtformat, integer_types):
             idt = int(self.p.dtformat)
             if idt == 1:
+                self._dtconvert = lambda x: datetime.utcfromtimestamp(int(x)/1000)
+            if idt == 2:
                 self._dtconvert = lambda x: datetime.utcfromtimestamp(int(x))
-            elif idt == 2:
+            elif idt == 3:
                 self._dtconvert = lambda x: datetime.utcfromtimestamp(float(x))
 
         else:  # assume callable
