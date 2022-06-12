@@ -7,17 +7,10 @@ import random
 import requests
 import atexit
 import signal
+
 from market_maker import bitmex
 from market_maker.settings import settings
 from market_maker.utils import log, constants, errors, math
-from market_maker import tanalysis
-from market_maker import indicators as indi 
-from market_maker import prepare_ta as prep
-from market_maker import macd_strat as macd_strat
-import pandas as pd
-import math as math_round
-
-
 
 # Used for reloading the bot - saves modified times of key files
 import os
@@ -44,8 +37,7 @@ class ExchangeInterface:
 
     def cancel_order(self, order):
         tickLog = self.get_instrument()['tickLog']
-        logger.info("Canceling: %s %d @ %.*f" %
-                    (order['side'], order['orderQty'], tickLog, order['price']))
+        logger.info("Canceling: %s %d @ %.*f" % (order['side'], order['orderQty'], tickLog, order['price']))
         while True:
             try:
                 self.bitmex.cancel(order['orderID'])
@@ -56,13 +48,11 @@ class ExchangeInterface:
             else:
                 break
 
-    def cancel_all_orders(self,stops=True):
+    def cancel_all_orders(self):
         if self.dry_run:
             return
-        if stops:
-            logger.info("Canceling all existing orders, including stops.")
-        elif not stops:
-            logger.info("Canceling all existing orders, excluding stops.")
+
+        logger.info("Resetting current position. Canceling all existing orders.")
         tickLog = self.get_instrument()['tickLog']
 
         # In certain cases, a WS update might not make it through before we call this.
@@ -70,19 +60,10 @@ class ExchangeInterface:
         orders = self.bitmex.http_open_orders()
 
         for order in orders:
-            if order['ordType'] == "Stop" and stops:
-                logger.info(f"Canceling stop {order['leavesQty']} @ ${order['stopPx']}")
-                self.bitmex.cancel(order['orderID'])
-            else:
-                if not order['ordType'] == "Stop":
-                    logger.info(f"Canceling: {order['side']} {order['orderQty']} @ ${order['price']}")
-                    self.bitmex.cancel(order['orderID'])
-                    
+            logger.info("Canceling: %s %d @ %.*f" % (order['side'], order['orderQty'], tickLog, order['price']))
 
-        #if len(orders):
-        #    self.bitmex.cancel([order['orderID'] for order in orders])
-
-
+        if len(orders):
+            self.bitmex.cancel([order['orderID'] for order in orders])
 
         sleep(settings.API_REST_INTERVAL)
 
@@ -100,15 +81,12 @@ class ExchangeInterface:
             elif not instrument['isQuanto'] and not instrument['isInverse']:
                 future_type = "Linear"
             else:
-                raise NotImplementedError(
-                    "Unknown future type; not quanto or inverse: %s" % instrument['symbol'])
+                raise NotImplementedError("Unknown future type; not quanto or inverse: %s" % instrument['symbol'])
 
             if instrument['underlyingToSettleMultiplier'] is None:
-                multiplier = float(
-                    instrument['multiplier']) / float(instrument['quoteToSettleMultiplier'])
+                multiplier = float(instrument['multiplier']) / float(instrument['quoteToSettleMultiplier'])
             else:
-                multiplier = float(
-                    instrument['multiplier']) / float(instrument['underlyingToSettleMultiplier'])
+                multiplier = float(instrument['multiplier']) / float(instrument['underlyingToSettleMultiplier'])
 
             portfolio[symbol] = {
                 "currentQty": float(position['currentQty']),
@@ -128,15 +106,11 @@ class ExchangeInterface:
         for symbol in portfolio:
             item = portfolio[symbol]
             if item['futureType'] == "Quanto":
-                spot_delta += item['currentQty'] * \
-                    item['multiplier'] * item['spot']
-                mark_delta += item['currentQty'] * \
-                    item['multiplier'] * item['markPrice']
+                spot_delta += item['currentQty'] * item['multiplier'] * item['spot']
+                mark_delta += item['currentQty'] * item['multiplier'] * item['markPrice']
             elif item['futureType'] == "Inverse":
-                spot_delta += (item['multiplier'] /
-                               item['spot']) * item['currentQty']
-                mark_delta += (item['multiplier'] /
-                               item['markPrice']) * item['currentQty']
+                spot_delta += (item['multiplier'] / item['spot']) * item['currentQty']
+                mark_delta += (item['multiplier'] / item['markPrice']) * item['currentQty']
             elif item['futureType'] == "Linear":
                 spot_delta += item['multiplier'] * item['currentQty']
                 mark_delta += item['multiplier'] * item['currentQty']
@@ -180,13 +154,7 @@ class ExchangeInterface:
         if not len(sells):
             return {'price': 2**32}
         lowest_sell = min(sells or [], key=lambda o: o['price'])
-        # ought to be enough for anyone
-        return lowest_sell if lowest_sell else {'price': 2**32}
-        
-    def amend_orders(self, orders):
-        if self.dry_run:
-            return orders
-        return self.bitmex.amend_orders(orders)
+        return lowest_sell if lowest_sell else {'price': 2**32}  # ought to be enough for anyone
 
     def get_position(self, symbol=None):
         if symbol is None:
@@ -208,21 +176,27 @@ class ExchangeInterface:
             raise errors.MarketClosedError("The instrument %s is not open. State: %s" %
                                            (self.symbol, instrument["state"]))
 
-    def get_avgentry(self, symbol=None):
-        if symbol is None:
-            symbol = self.symbol
-        return self.get_position(symbol)['avgEntryPrice'] 
-
-    def get_stops(self):
-        if self.dry_run:
-            return []
-        return self.bitmex.open_stops()   
-
     def check_if_orderbook_empty(self):
         """This function checks whether the order book is empty"""
         instrument = self.get_instrument()
         if instrument['midPrice'] is None:
             raise errors.MarketEmptyError("Orderbook is empty, cannot quote")
+
+    def amend_orders(self, orders):
+        if self.dry_run:
+            return orders
+        return self.bitmex.amend_orders(orders)
+
+    def create_orders(self, orders):
+        if self.dry_run:
+            return orders
+        return self.bitmex.create_orders(orders)
+
+    def cancel_orders(self, orders):
+        if self.dry_run:
+            return orders
+        return self.bitmex.cancel([order['orderID'] for order in orders])
+
 
 class OrderManager:
     def __init__(self):
@@ -234,24 +208,30 @@ class OrderManager:
 
         logger.info("Using symbol %s." % self.exchange.symbol)
 
+        if settings.DRY_RUN:
+            logger.info("Initializing dry run. Orders printed below represent what would be posted to BitMEX.")
+        else:
+            logger.info("Order Manager initializing, connecting to BitMEX. Live run: executing real trades.")
+
         self.start_time = datetime.now()
         self.instrument = self.exchange.get_instrument()
+        if settings.ORDER_START_SIZE % self.instrument['lotSize'] != 0 or settings.ORDER_START_SIZE < self.instrument['lotSize']:
+            print(f"Invalid ORDER_START_SIZE, must be divisible by lotSize of {self.exchange.symbol} instrument")
+            print(f"Setting ORDER_START_SIZE to lotSize of {self.exchange.symbol}: {self.instrument['lotSize']}")
+            settings.ORDER_START_SIZE = self.instrument['lotSize']
+            
+
+        if settings.ORDER_STEP_SIZE % self.instrument['lotSize'] != 0 or settings.ORDER_STEP_SIZE < self.instrument['lotSize']:
+            print(f"Invalid ORDER_STEP_SIZE, must be divisible by lotSize of {self.exchange.symbol} instrument")
+            print(f"Setting ORDER_STEP_SIZE to lotSize of {self.exchange.symbol}: {self.instrument['lotSize']}")
+            settings.ORDER_STEP_SIZE = self.instrument['lotSize']
+
         self.starting_qty = self.exchange.get_delta()
         self.running_qty = self.starting_qty
-        self.trigger=False
-        self.trigged=False
-        self.in_trade=False
-        self.stoploss=False
-        self.times=100
-        self.initialpos=0
-        self.notification=False
-        self.avg_entry=0
-        with open("balance.log") as f:
-            self.firstbalance = f.readlines()[0].rstrip()        
-        # self.reset()
+        self.reset()
 
     def reset(self):
-        self.exchange.cancel_all_orders(stops=False)
+        self.exchange.cancel_all_orders()
         self.sanity_check()
         self.print_status()
 
@@ -260,37 +240,22 @@ class OrderManager:
 
     def print_status(self):
         """Print the current MM status."""
-        self.times+=1
-        if self.times < 10:
-            return
-        self.times=0
 
-
-        sys.stdout.write("-----\n")
         margin = self.exchange.get_margin()
         position = self.exchange.get_position()
         self.running_qty = self.exchange.get_delta()
         tickLog = self.exchange.get_instrument()['tickLog']
         self.start_XBt = margin["marginBalance"]
-        f = open("balance.log", "a")
-        f.write(str(XBt_to_XBT(self.start_XBt))+ "\n")
-        f.close()
-        profit=XBt_to_XBT(self.start_XBt) - float(self.firstbalance)
-        logger.info(f"Current XBT Balance: {XBt_to_XBT(self.start_XBt):.6f} (Start Balance: {float(self.firstbalance):.6f})") 
-        logger.info(f"Profit launch of strategy: {profit:.4f}BTC ({(profit/float(self.firstbalance)):.0%} of initial investment)") 
 
+        logger.info("Current XBT Balance: %.6f" % XBt_to_XBT(self.start_XBt))
+        logger.info("Current Contract Position: %d" % self.running_qty)
+        if settings.CHECK_POSITION_LIMITS:
+            logger.info("Position limits: %d/%d" % (settings.MIN_POSITION, settings.MAX_POSITION))
         if position['currentQty'] != 0:
-            #logger.info(f"Avg Cost Price: ${float(position['avgCostPrice'])})")
-            logger.info(f"Current Contract Position: {self.running_qty} @ ${(float(position['avgEntryPrice']))} entry ")
-
-    #        logger.info(f"Avg Entry Price: ${(float(position['avgEntryPrice']))}")
-        #logger.info("Contracts Traded This Run: %d" %
-        #            (self.running_qty - self.starting_qty))
-            logger.info(f"Total Contract Delta: {round(self.exchange.calc_delta()['spot'],6)}")
-        logger.info(f"Max loss per trade: {settings.RISK:.0%} ")
-        if self.initialpos != 0 and self.avg_entry != 0:
-            logger.info(f"Last pos variable: {self.initialpos}")
-            logger.info(f"Dynamic avg_entry variable: {self.avg_entry}")
+            logger.info("Avg Cost Price: %.*f" % (tickLog, float(position['avgCostPrice'])))
+            logger.info("Avg Entry Price: %.*f" % (tickLog, float(position['avgEntryPrice'])))
+        logger.info("Contracts Traded This Run: %d" % (self.running_qty - self.starting_qty))
+        logger.info("Total Contract Delta: %.4f XBT" % self.exchange.calc_delta()['spot'])
 
     def get_ticker(self):
         ticker = self.exchange.get_ticker()
@@ -318,14 +283,13 @@ class OrderManager:
 
         # Midpoint, used for simpler order placement.
         self.start_position_mid = ticker["mid"]
-        #logger.info(
-        #    "%s Ticker: Buy: %.*f, Sell: %.*f" %
-        #    (self.instrument['symbol'], tickLog,
-        #     ticker["buy"], tickLog, ticker["sell"])
-        #)
-        #logger.info('Start Positions: Buy: %.*f, Sell: %.*f, Mid: %.*f' %
-        #            (tickLog, self.start_position_buy, tickLog, self.start_position_sell,
-        #             tickLog, self.start_position_mid))
+        logger.info(
+            "%s Ticker: Buy: %.*f, Sell: %.*f" %
+            (self.instrument['symbol'], tickLog, ticker["buy"], tickLog, ticker["sell"])
+        )
+        logger.info('Start Positions: Buy: %.*f, Sell: %.*f, Mid: %.*f' %
+                    (tickLog, self.start_position_buy, tickLog, self.start_position_sell,
+                     tickLog, self.start_position_mid))
         return ticker
 
     def get_price_offset(self, index):
@@ -371,7 +335,98 @@ class OrderManager:
 
         return self.converge_orders(buy_orders, sell_orders)
 
+    def prepare_order(self, index):
+        """Create an order object."""
 
+        if settings.RANDOM_ORDER_SIZE is True:
+            quantity = random.randint(settings.MIN_ORDER_SIZE, settings.MAX_ORDER_SIZE)
+        else:
+            quantity = settings.ORDER_START_SIZE + ((abs(index) - 1) * settings.ORDER_STEP_SIZE)
+
+        price = self.get_price_offset(index)
+
+        return {'price': price, 'orderQty': quantity, 'side': "Buy" if index < 0 else "Sell"}
+
+    def converge_orders(self, buy_orders, sell_orders):
+        """Converge the orders we currently have in the book with what we want to be in the book.
+           This involves amending any open orders and creating new ones if any have filled completely.
+           We start from the closest orders outward."""
+
+        tickLog = self.exchange.get_instrument()['tickLog']
+        to_amend = []
+        to_create = []
+        to_cancel = []
+        buys_matched = 0
+        sells_matched = 0
+        existing_orders = self.exchange.get_orders()
+
+        # Check all existing orders and match them up with what we want to place.
+        # If there's an open one, we might be able to amend it to fit what we want.
+        for order in existing_orders:
+            try:
+                if order['side'] == 'Buy':
+                    desired_order = buy_orders[buys_matched]
+                    buys_matched += 1
+                else:
+                    desired_order = sell_orders[sells_matched]
+                    sells_matched += 1
+
+                # Found an existing order. Do we need to amend it?
+                if desired_order['orderQty'] != order['leavesQty'] or (
+                        # If price has changed, and the change is more than our RELIST_INTERVAL, amend.
+                        desired_order['price'] != order['price'] and
+                        abs((desired_order['price'] / order['price']) - 1) > settings.RELIST_INTERVAL):
+                    to_amend.append({'orderID': order['orderID'], 'orderQty': order['cumQty'] + desired_order['orderQty'],
+                                     'price': desired_order['price'], 'side': order['side']})
+            except IndexError:
+                # Will throw if there isn't a desired order to match. In that case, cancel it.
+                to_cancel.append(order)
+
+        while buys_matched < len(buy_orders):
+            to_create.append(buy_orders[buys_matched])
+            buys_matched += 1
+
+        while sells_matched < len(sell_orders):
+            to_create.append(sell_orders[sells_matched])
+            sells_matched += 1
+
+        if len(to_amend) > 0:
+            for amended_order in reversed(to_amend):
+                reference_order = [o for o in existing_orders if o['orderID'] == amended_order['orderID']][0]
+                logger.info("Amending %4s: %d @ %.*f to %d @ %.*f (%+.*f)" % (
+                    amended_order['side'],
+                    reference_order['leavesQty'], tickLog, reference_order['price'],
+                    (amended_order['orderQty'] - reference_order['cumQty']), tickLog, amended_order['price'],
+                    tickLog, (amended_order['price'] - reference_order['price'])
+                ))
+            # This can fail if an order has closed in the time we were processing.
+            # The API will send us `invalid ordStatus`, which means that the order's status (Filled/Canceled)
+            # made it not amendable.
+            # If that happens, we need to catch it and re-tick.
+            try:
+                self.exchange.amend_orders(to_amend)
+            except requests.exceptions.HTTPError as e:
+                errorObj = e.response.json()
+                if errorObj['error']['message'] == 'Invalid ordStatus':
+                    logger.warn("Amending failed. Waiting for order data to converge and retrying.")
+                    sleep(0.5)
+                    return self.place_orders()
+                else:
+                    logger.error("Unknown error on amend: %s. Exiting" % errorObj)
+                    sys.exit(1)
+
+        if len(to_create) > 0:
+            logger.info("Creating %d orders:" % (len(to_create)))
+            for order in reversed(to_create):
+                logger.info("%4s %d @ %.*f" % (order['side'], order['orderQty'], tickLog, order['price']))
+            self.exchange.create_orders(to_create)
+
+        # Could happen if we exceed a delta limit
+        if len(to_cancel) > 0:
+            logger.info("Canceling %d orders:" % (len(to_cancel)))
+            for order in reversed(to_cancel):
+                logger.info("%4s %d @ %.*f" % (order['side'], order['leavesQty'], tickLog, order['price']))
+            self.exchange.cancel_orders(to_cancel)
 
     ###
     # Position Limits
@@ -397,6 +452,7 @@ class OrderManager:
 
     def sanity_check(self):
         """Perform checks before placing orders."""
+
         # Check if OB is empty - if so, can't quote.
         self.exchange.check_if_orderbook_empty()
 
@@ -408,12 +464,10 @@ class OrderManager:
 
         # Sanity check:
         if self.get_price_offset(-1) >= ticker["sell"] or self.get_price_offset(1) <= ticker["buy"]:
-            logger.error("Buy: %s, Sell: %s" %
-                        (self.start_position_buy, self.start_position_sell))
+            logger.error("Buy: %s, Sell: %s" % (self.start_position_buy, self.start_position_sell))
             logger.error("First buy position: %s\nBitMEX Best Ask: %s\nFirst sell position: %s\nBitMEX Best Bid: %s" %
-                        (self.get_price_offset(-1), ticker["sell"], self.get_price_offset(1), ticker["buy"]))
+                         (self.get_price_offset(-1), ticker["sell"], self.get_price_offset(1), ticker["buy"]))
             logger.error("Sanity check failed, exchange data is inconsistent")
-            sys.exit(1)
             self.exit()
 
         # Messaging if the position limits are reached
@@ -435,11 +489,6 @@ class OrderManager:
         """Restart if any files we're watching have changed."""
         for f, mtime in watched_files_mtimes:
             if getmtime(f) > mtime:
-                logger.info("***************************************************************")
-                logger.info("* A change in the code has been detected, reloading instance! *")
-                logger.info("***************************************************************")
-
-                sys.exit(1)
                 self.restart()
 
     def check_connection(self):
@@ -447,9 +496,9 @@ class OrderManager:
         return self.exchange.is_open()
 
     def exit(self):
-        logger.info("Shutting down.")
+        logger.info("Shutting down. All open orders will be cancelled.")
         try:
-            #self.exchange.cancel_all_orders()
+            self.exchange.cancel_all_orders()
             self.exchange.bitmex.exit()
         except errors.AuthenticationError as e:
             logger.info("Was not authenticated; could not cancel orders.")
@@ -460,7 +509,7 @@ class OrderManager:
 
     def run_loop(self):
         while True:
-
+            sys.stdout.write("-----\n")
             sys.stdout.flush()
 
             self.check_file_change()
@@ -469,9 +518,7 @@ class OrderManager:
             # This will restart on very short downtime, but if it's longer,
             # the MM will crash entirely as it is unable to connect to the WS on boot.
             if not self.check_connection():
-                logger.error(
-                    "Realtime data connection unexpectedly closed, restarting.")
-                sys.exit(1)
+                logger.error("Realtime data connection unexpectedly closed, restarting.")
                 self.restart()
 
             self.sanity_check()  # Ensures health of mm - several cut-out points here
@@ -502,56 +549,11 @@ def margin(instrument, quantity, price):
 
 
 def run():
-    logger.info('Position sniper ^_^ © %s\n' % constants.VERSION)
+    logger.info('BitMEX Market Maker Version: %s\n' % constants.VERSION)
 
-    #om = OrderManager()
-    om = CustomOrderManager()
+    om = OrderManager()
     # Try/except just keeps ctrl-c from printing an ugly stacktrace
     try:
         om.run_loop()
     except (KeyboardInterrupt, SystemExit):
         sys.exit()
-
-from market_maker.market_maker import OrderManager
-
-class CustomOrderManager(OrderManager):
-    logger.info('Custom strat')
-
-    def place_orders(self) -> None:
-
-    ##########################
-    # Technical preparations #
-    ##########################
-        timeframe1m=self.exchange.bitmex.get_candles(bucket='1m', symbol=settings.SYMBOL, reverse='true', count=1000)
-        timeframe5m=self.exchange.bitmex.get_candles(bucket='5m', symbol=settings.SYMBOL, reverse='true', count=1000)
-        timeframe1h=self.exchange.bitmex.get_candles(bucket='1h', symbol=settings.SYMBOL, reverse='true', count=1000)
-        """NOTE some timeframes are derived from 1min and 5min candles inside prepare so no need to pass them from here"""
-        timeframe1m,timeframe2m,timeframe3m,timeframe5m,timeframe10m,timeframe15m,timeframe30m,timeframe45m,timeframe1h = prep.prepare(timeframe1m, timeframe5m, timeframe1h)
-    # END TECHNICAL PREPARATIONS #
-
-    #####################################
-    ## Variables used for calculations ##
-    #####################################
-        position=self.exchange.get_position()['currentQty']
-        if position != 0:
-            self.in_trade=True
-        else:
-            self.in_trade=False
-    ### END VARIABLES ###
-
-    ###########################
-    ## Trade helper function ##
-    ###########################
-        def rounddown(x):
-            return int(math_round.floor(x / 100.0)) * 100
-    ### END TRADE HELPER FUNCTION ###
-
-        macd_strat.check_trigger(self,timeframe1h,"1h")
-        macd_strat.check_trigger(self,timeframe45m,"45min")
-        macd_strat.check_trigger(self,timeframe30m,"30min")
-        macd_strat.check_trigger(self,timeframe15m,"15min")
-        macd_strat.check_trigger(self,timeframe10m,"10min")
-        macd_strat.check_trigger(self,timeframe5m,"5min",timeframe15m)
-        macd_strat.check_trigger(self,timeframe3m,"3min",timeframe15m)
-        macd_strat.check_trigger(self,timeframe2m,"2min",timeframe15m)
-        macd_strat.check_trigger(self,timeframe1m,"1min",timeframe5m)

@@ -31,16 +31,14 @@ class BitMEX(object):
         self.apiKey = apiKey
         self.apiSecret = apiSecret
         if len(orderIDPrefix) > 13:
-            raise ValueError(
-                "settings.ORDERID_PREFIX must be at most 13 characters long!")
+            raise ValueError("settings.ORDERID_PREFIX must be at most 13 characters long!")
         self.orderIDPrefix = orderIDPrefix
         self.retries = 0  # initialize counter
 
         # Prepare HTTPS session
         self.session = requests.Session()
         # These headers are always sent
-        self.session.headers.update(
-            {'user-agent': 'Position Sniper-' + constants.VERSION})
+        self.session.headers.update({'user-agent': 'liquidbot-' + constants.VERSION})
         self.session.headers.update({'content-type': 'application/json'})
         self.session.headers.update({'accept': 'application/json'})
 
@@ -92,7 +90,11 @@ class BitMEX(object):
 
         """
         return self.ws.recent_trades()
-#https://testnet.bitmex.com/api/v1/trade/bucketed?binSize=1m&partial=false&symbol=XBTUSD&count=100&reverse=false
+
+    #
+    # Get Candles
+    # @see https://www.bitmex.com/api/explorer/#!/Trade/Trade_getBucketed
+    #
     def get_candles(self, bucket="1d", symbol="XBTUSD", reverse="true", count=5, filter=None):
         query = {
             "binSize": bucket,
@@ -110,7 +112,6 @@ class BitMEX(object):
     #
     def authentication_required(fn):
         """Annotation for methods that require auth."""
-
         def wrapped(self, *args, **kwargs):
             if not (self.apiKey):
                 msg = "You must be authenticated to use this method"
@@ -160,72 +161,6 @@ class BitMEX(object):
         return self.place_order(-quantity, price)
 
     @authentication_required
-#    def stop_trail(self, quantity, price, stopPx, pegOffsetValue):
-    def stop_trail(self, quantity, pegOffsetValue):
-        """Place a sell order.
-
-        Returns order object. ID: orderID
-        """
-        return self.place_stop(-quantity, pegOffsetValue)
-#symbol=XBTUSD&side=Sell&orderQty=100&stopPx=40000&pegOffsetValue=500&pegPriceType=TrailingStopPeg&ordType=Stop
-    @authentication_required
-    #def place_stop(self, quantity=0, pegOffsetValue=0):
-    def place_stop(self, quantity=0, price=0, stopPx=0, pegOffsetValue=0):
-        if quantity < 0:
-            side="Sell"
-        elif quantity > 0:
-            side="Buy"
-        """Place an order."""
-        #if price < 0:
-         #   raise Exception("Price must be positive.")
-
-        endpoint = "order"
-        # Generate a unique clOrdID with our prefix so we can identify it.
-        clOrdID = self.orderIDPrefix + \
-            base64.b64encode(uuid.uuid4().bytes).decode('utf8').rstrip('=\n')
-        postdict = {
-            'symbol': self.symbol,
-            'orderQty': quantity,
-            'execInst': "ReduceOnly",
-            #'price': price,
-            'stopPx': stopPx,
-            'ordType': "Stop",
-            'clOrdID': clOrdID
-        }
-        logger.info(f"Creating stop: {postdict['symbol']} {postdict['orderQty']} @ {postdict['stopPx']}")
-        return self._curl_bitmex(path=endpoint, postdict=postdict, verb="POST")        
-
-    @authentication_required
-    def close_position(self):
-        quantity=self.position(self.symbol)['currentQty']
-        if quantity < 0:
-            side="Buy"
-        elif quantity > 0:
-            side="Sell"
-        else:
-            logger.info("No position to close!")
-            return
-        endpoint = "order"
-        # Generate a unique clOrdID with our prefix so we can identify it.
-        clOrdID = self.orderIDPrefix + \
-            base64.b64encode(uuid.uuid4().bytes).decode('utf8').rstrip('=\n')
-        postdict = {
-            'symbol': self.symbol,
-            'orderQty': abs(quantity),
-            'side': side,
-            'execInst': "ReduceOnly",
-            'ordType': "Market",
-            'clOrdID': clOrdID
-        }
-        return self._curl_bitmex(path=endpoint, postdict=postdict, verb="POST")  
-
-    @authentication_required
-    def amend_orders(self, orders):
-        """Amend multiple orders."""
-        for order in orders:
-            self._curl_bitmex(path='order', postdict=order, verb='PUT', rethrow_errors=True)
-            
-    @authentication_required
     def place_order(self, quantity, price):
         """Place an order."""
         if price < 0:
@@ -233,44 +168,35 @@ class BitMEX(object):
 
         endpoint = "order"
         # Generate a unique clOrdID with our prefix so we can identify it.
-        clOrdID = self.orderIDPrefix + \
-            base64.b64encode(uuid.uuid4().bytes).decode('utf8').rstrip('=\n')
+        clOrdID = self.orderIDPrefix + base64.b64encode(uuid.uuid4().bytes).decode('utf8').rstrip('=\n')
         postdict = {
             'symbol': self.symbol,
             'orderQty': quantity,
             'price': price,
             'clOrdID': clOrdID
         }
-        logger.info(f"Creating order: {postdict['symbol']} {postdict['orderQty']} @ {postdict['price']}")
         return self._curl_bitmex(path=endpoint, postdict=postdict, verb="POST")
 
     @authentication_required
-    def amend_bulk_orders(self, orders):
+    def amend_orders(self, orders):
         """Amend multiple orders."""
-        # Note rethrow; if this fails, we want to catch it and re-tick
-        return self._curl_bitmex(path='order/bulk', postdict={'orders': orders}, verb='PUT', rethrow_errors=True)
+        for order in orders:
+            self._curl_bitmex(path='order', postdict=order, verb='PUT', rethrow_errors=True)
 
     @authentication_required
-    def create_bulk_orders(self, orders):
+    def create_orders(self, orders):
         """Create multiple orders."""
         for order in orders:
-            order['clOrdID'] = self.orderIDPrefix + \
-                base64.b64encode(uuid.uuid4().bytes).decode(
-                    'utf8').rstrip('=\n')
+            order['clOrdID'] = self.orderIDPrefix + base64.b64encode(uuid.uuid4().bytes).decode('utf8').rstrip('=\n')
             order['symbol'] = self.symbol
             if self.postOnly:
                 order['execInst'] = 'ParticipateDoNotInitiate'
-        return self._curl_bitmex(path='order/bulk', postdict={'orders': orders}, verb='POST')
+            self._curl_bitmex(path='order', postdict=order, verb='POST',  rethrow_errors=True)
 
     @authentication_required
     def open_orders(self):
         """Get open orders."""
         return self.ws.open_orders(self.orderIDPrefix)
-
-    @authentication_required
-    def open_stops(self):
-        """Get open orders."""
-        return self.ws.open_stops(self.orderIDPrefix)     
 
     @authentication_required
     def http_open_orders(self):
@@ -339,17 +265,14 @@ class BitMEX(object):
         def retry():
             self.retries += 1
             if self.retries > max_retries:
-                raise Exception("Max retries on %s (%s) hit, raising." % (
-                    path, json.dumps(postdict or '')))
+                raise Exception("Max retries on %s (%s) hit, raising." % (path, json.dumps(postdict or '')))
             return self._curl_bitmex(path, query, postdict, timeout, verb, rethrow_errors, max_retries)
 
         # Make the request
         response = None
         try:
-            #logger.info("sending req to %s: %s" %
-            #            (url, json.dumps(postdict or query or '')))
-            req = requests.Request(
-                verb, url, json=postdict, auth=auth, params=query)
+            logger.info("sending req to %s: %s" % (url, json.dumps(postdict or query or '')))
+            req = requests.Request(verb, url, json=postdict, auth=auth, params=query)
             prepped = self.session.prepare_request(req)
             response = self.session.send(prepped, timeout=timeout)
             # Make non-200s throw
@@ -361,8 +284,7 @@ class BitMEX(object):
 
             # 401 - Auth error. This is fatal.
             if response.status_code == 401:
-                logger.error(
-                    "API Key or Secret incorrect, please check and restart.")
+                logger.error("API Key or Secret incorrect, please check and restart.")
                 logger.error("Error: " + response.text)
                 if postdict:
                     logger.error(postdict)
@@ -375,43 +297,34 @@ class BitMEX(object):
                     logger.error("Order not found: %s" % postdict['orderID'])
                     return
                 logger.error("Unable to contact the BitMEX API (404). " +
-                             "Request: %s \n %s" % (url, json.dumps(postdict)))
+                                  "Request: %s \n %s" % (url, json.dumps(postdict)))
                 exit_or_throw(e)
 
             # 429, ratelimit; cancel orders & wait until X-RateLimit-Reset
             elif response.status_code == 429:
                 logger.error("Ratelimited on current request. Sleeping, then trying again. Try fewer " +
-                             "order pairs or contact support@bitmex.com to raise your limits. " +
-                             "Request: %s \n %s" % (url, json.dumps(postdict)))
+                                  "order pairs or contact support@bitmex.com to raise your limits. " +
+                                  "Request: %s \n %s" % (url, json.dumps(postdict)))
 
                 # Figure out how long we need to wait.
                 ratelimit_reset = response.headers['X-RateLimit-Reset']
                 to_sleep = int(ratelimit_reset) - int(time.time())
-                reset_str = datetime.datetime.fromtimestamp(
-                    int(ratelimit_reset)).strftime('%X')
+                reset_str = datetime.datetime.fromtimestamp(int(ratelimit_reset)).strftime('%X')
 
                 # We're ratelimited, and we may be waiting for a long time. Cancel orders.
                 logger.warning("Canceling all known orders in the meantime.")
                 self.cancel([o['orderID'] for o in self.open_orders()])
 
-                logger.error("Your ratelimit will reset at %s. Sleeping for %d seconds." % (
-                    reset_str, to_sleep))
+                logger.error("Your ratelimit will reset at %s. Sleeping for %d seconds." % (reset_str, to_sleep))
                 time.sleep(to_sleep)
 
                 # Retry the request.
                 return retry()
 
-            elif response.status_code == 502:
-                logger.warning("Bad Gateway for api request, retrying. " +
-                               "Request: %s \n %s" % (url, json.dumps(postdict)))
-                time.sleep(3)
-                self.exit()
-                return retry()                
-
             # 503 - BitMEX temporary downtime, likely due to a deploy. Try again
             elif response.status_code == 503:
                 logger.warning("Unable to contact the BitMEX API (503), retrying. " +
-                               "Request: %s \n %s" % (url, json.dumps(postdict)))
+                                    "Request: %s \n %s" % (url, json.dumps(postdict)))
                 time.sleep(3)
                 return retry()
 
@@ -423,10 +336,8 @@ class BitMEX(object):
                 if 'duplicate clordid' in message:
                     orders = postdict['orders'] if 'orders' in postdict else postdict
 
-                    IDs = json.dumps(
-                        {'clOrdID': [order['clOrdID'] for order in orders]})
-                    orderResults = self._curl_bitmex(
-                        '/order', query={'filter': IDs}, verb='GET')
+                    IDs = json.dumps({'clOrdID': [order['clOrdID'] for order in orders]})
+                    orderResults = self._curl_bitmex('/order', query={'filter': IDs}, verb='GET')
 
                     for i, order in enumerate(orderResults):
                         if (
@@ -441,26 +352,23 @@ class BitMEX(object):
                     return orderResults
 
                 elif 'insufficient available balance' in message:
-                    logger.error(
-                        'Account out of funds. The message: %s' % error['message'])
+                    logger.error('Account out of funds. The message: %s' % error['message'])
                     exit_or_throw(Exception('Insufficient Funds'))
+
 
             # If we haven't returned or re-raised yet, we get here.
             logger.error("Unhandled Error: %s: %s" % (e, response.text))
-            logger.error("Endpoint was: %s %s: %s" %
-                         (verb, path, json.dumps(postdict)))
+            logger.error("Endpoint was: %s %s: %s" % (verb, path, json.dumps(postdict)))
             exit_or_throw(e)
 
         except requests.exceptions.Timeout as e:
             # Timeout, re-run this request
-            logger.warning("Timed out on request: %s (%s), retrying..." % (
-                path, json.dumps(postdict or '')))
-            self.exit()
+            logger.warning("Timed out on request: %s (%s), retrying..." % (path, json.dumps(postdict or '')))
             return retry()
 
         except requests.exceptions.ConnectionError as e:
             logger.warning("Unable to contact the BitMEX API (%s). Please check the URL. Retrying. " +
-                           "Request: %s %s \n %s" % (e, url, json.dumps(postdict)))
+                                "Request: %s %s \n %s" % (e, url, json.dumps(postdict)))
             time.sleep(1)
             return retry()
 

@@ -23,8 +23,7 @@ class APIKeyAuth(AuthBase):
         nonce = generate_expires()
         r.headers['api-expires'] = str(nonce)
         r.headers['api-key'] = self.apiKey
-        r.headers['api-signature'] = generate_signature(
-            self.apiSecret, r.method, r.url, nonce, r.body or '')
+        r.headers['api-signature'] = generate_signature(self.apiSecret, r.method, r.url, nonce, r.body or '')
 
         return r
 
@@ -59,6 +58,5 @@ def generate_signature(secret, verb, url, nonce, data):
     # print "Computing HMAC: %s" % verb + path + str(nonce) + data
     message = verb + path + str(nonce) + data
 
-    signature = hmac.new(bytes(secret, 'utf8'), bytes(
-        message, 'utf8'), digestmod=hashlib.sha256).hexdigest()
+    signature = hmac.new(bytes(secret, 'utf8'), bytes(message, 'utf8'), digestmod=hashlib.sha256).hexdigest()
     return signature

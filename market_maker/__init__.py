@@ -1,15 +1,15 @@
-import shutil
 import argparse
 import os
 
+import shutil
 
-__version__ = 'v1.5.1'
+
+__version__ = 'v1.6.0'
 
 
 def run():
     parser = argparse.ArgumentParser(description='sample BitMEX market maker')
-    parser.add_argument(
-        'command', nargs='?', help='Instrument symbol on BitMEX or "setup" for first-time config')
+    parser.add_argument('command', nargs='?', help='Instrument symbol on BitMEX or "setup" for first-time config')
     args = parser.parse_args()
 
     if args.command is not None and args.command.strip().lower() == 'setup':
@@ -28,12 +28,10 @@ def copy_files():
     package_base = os.path.dirname(__file__)
 
     if not os.path.isfile(os.path.join(os.getcwd(), 'settings.py')):
-        shutil.copyfile(os.path.join(
-            package_base, '_settings_base.py'), 'settings.py')
+        shutil.copyfile(os.path.join(package_base, '_settings_base.py'), 'settings.py')
 
     try:
-        shutil.copytree(package_base, os.path.join(
-            os.getcwd(), 'market_maker'))
+        shutil.copytree(package_base, os.path.join(os.getcwd(), 'market_maker'))
         print('Created marketmaker project.\n**** \nImportant!!!\nEdit settings.py before starting the bot.\n****')
     except FileExistsError:
         print('Market Maker project already exists!')
