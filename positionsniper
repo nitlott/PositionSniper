@@ -1,0 +1,5 @@
+#!/usr/bin/env python
+
+from position_sniper import strat_new
+strat_new.run()
+
