@@ -175,6 +175,15 @@ class ExchangeInterface:
         if instrument["state"] != "Open" and instrument["state"] != "Closed":
             raise errors.MarketClosedError("The instrument %s is not open. State: %s" %
                                            (self.symbol, instrument["state"]))
+    def get_avgentry(self, symbol=None):
+        if symbol is None:
+            symbol = self.symbol
+        return self.get_position(symbol)['avgEntryPrice']
+
+    def get_stops(self):
+        if self.dry_run:
+            return []
+        return self.bitmex.open_stops()
 
     def check_if_orderbook_empty(self):
         """This function checks whether the order book is empty"""

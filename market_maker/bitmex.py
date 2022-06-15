@@ -199,6 +199,11 @@ class BitMEX(object):
         return self.ws.open_orders(self.orderIDPrefix)
 
     @authentication_required
+    def open_stops(self):
+        """Get open stops."""
+        return self.ws.open_stops(self.orderIDPrefix)
+
+    @authentication_required
     def http_open_orders(self):
         """Get open orders via HTTP. Used on close to ensure we catch them all."""
         path = "order"
